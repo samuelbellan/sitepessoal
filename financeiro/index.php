@@ -47,17 +47,22 @@ $stmtOrcamento = $pdo->prepare("
 ");
 $stmtOrcamento->execute([$mesAtual, $mesAtual]);
 $resumoOrcamento = $stmtOrcamento->fetch(PDO::FETCH_ASSOC);
+
+// Obtém as categorias para o select
+$catsSistema = $pdo->query("SELECT nome FROM categorias_orcamento ORDER BY nome")->fetchAll(PDO::FETCH_COLUMN);
 ?>
 
 <div class="container mt-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1>Dashboard Financeiro</h1>
-        <div>
-            <a href="lancamentos.php" class="btn btn-success">+ Novo Lançamento</a>
-            <a href="orcamento.php" class="btn btn-primary ms-2">Orçamento</a>
-            <a href="categorias.php" class="btn btn-outline-primary ms-2">Categorias</a>
-        </div>
+    <h1>Dashboard Financeiro</h1>
+    <div>
+        <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#modalNovoLancamento">
+            + Novo Lançamento
+        </button>
+        <a href="orcamento.php" class="btn btn-primary ms-2">Orçamento</a>
+        <a href="categorias.php" class="btn btn-outline-primary ms-2">Categorias</a>
     </div>
+</div>
 
     <?php if ($mensagem): ?><div class="alert alert-success"><?= $mensagem ?></div><?php endif; ?>
     <?php if ($erro): ?><div class="alert alert-danger"><?= $erro ?></div><?php endif; ?>
@@ -197,6 +202,53 @@ $resumoOrcamento = $stmtOrcamento->fetch(PDO::FETCH_ASSOC);
             </div>
         </div>
     </div>
-</div>
 
+    <!-- Modal para novo lançamento -->
+<div class="modal fade" id="modalNovoLancamento" tabindex="-1" aria-labelledby="modalNovoLancamentoLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <form method="post" action="lancamentos.php" class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modalNovoLancamentoLabel">Novo Lançamento</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" name="novo_lancamento" value="1" />
+        <div class="mb-3">
+          <label for="descricao" class="form-label">Descrição</label>
+          <input type="text" id="descricao" name="descricao" class="form-control" required />
+        </div>
+        <div class="mb-3">
+          <label for="categoria" class="form-label">Categoria</label>
+          <select id="categoria" name="categoria" class="form-select" required>
+            <option value="" selected disabled>Selecione a categoria</option>
+            <?php foreach ($catsSistema as $cat): ?>
+              <option value="<?= htmlspecialchars($cat) ?>"><?= htmlspecialchars($cat) ?></option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+        <div class="mb-3">
+          <label for="valor" class="form-label">Valor (R$)</label>
+          <input type="number" step="0.01" min="0" id="valor" name="valor" class="form-control" required />
+        </div>
+        <div class="mb-3">
+          <label for="tipo" class="form-label">Tipo</label>
+          <select id="tipo" name="tipo" class="form-select" required>
+            <option value="entrada">Receita</option>
+            <option value="saida">Despesa</option>
+          </select>
+        </div>
+        <div class="mb-3">
+          <label for="data" class="form-label">Data</label>
+          <input type="date" id="data" name="data" class="form-control" value="<?= date('Y-m-d') ?>" required />
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="submit" class="btn btn-primary">Salvar Lançamento</button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+      </div>
+    </form>
+  </div>
+</div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <?php include "footer.php"; ?>

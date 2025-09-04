@@ -12,19 +12,17 @@ unset($_SESSION['mensagem'], $_SESSION['erro']);
 // Exclusão de categoria
 if (isset($_GET['delete_id']) && ctype_digit($_GET['delete_id'])) {
     $delete_id = (int)$_GET['delete_id'];
-    // Busca o nome da categoria a excluir
     $stmt = $pdo->prepare("SELECT nome FROM categorias_orcamento WHERE id = ?");
     $stmt->execute([$delete_id]);
     $catNome = $stmt->fetchColumn();
 
     if ($catNome) {
-        // Verifica se possui subcategorias vinculadas
         $stmt = $pdo->prepare("SELECT COUNT(*) FROM categorias_orcamento WHERE categoria_pai = ?");
         $stmt->execute([$catNome]);
         $count = $stmt->fetchColumn();
 
         if ($count > 0) {
-            $_SESSION['erro'] = "Não é possível excluir a categoria '{$catNome}' pois possui subcategorias vinculadas.";
+            $_SESSION['erro'] = "Não é possível excluir a categoria '{$catNome}' pois possui subcategorias.";
         } else {
             $stmt = $pdo->prepare("DELETE FROM categorias_orcamento WHERE id = ?");
             if ($stmt->execute([$delete_id])) {
@@ -40,51 +38,53 @@ if (isset($_GET['delete_id']) && ctype_digit($_GET['delete_id'])) {
     exit();
 }
 
-// Inserção ou edição
+// Cadastro ou edição
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (isset($_POST['cadastrar'])) {
-        $nome = trim($_POST['nome'] ?? '');
-        $limite = str_replace(',', '.', $_POST['limite'] ?? '');
-        $pai = $_POST['pai'] ?: null;
+    $nome = trim($_POST['nome'] ?? '');
+    $limite = str_replace(',', '.', $_POST['limite_ideal'] ?? '');
+    $pai = $_POST['pai'] ?: null;
+    $tipo = $_POST['tipo'] ?? 'despesa';
 
-        if ($nome === '' || $limite === '' || !is_numeric($limite)) {
-            $_SESSION['erro'] = "Preencha todos os campos corretamente.";
+    if ($nome === '' || $limite === '' || !is_numeric($limite) || !in_array($tipo, ['receita', 'despesa'])) {
+        $_SESSION['erro'] = "Preencha todos os campos corretamente.";
+        header("Location: categorias.php");
+        exit();
+    }
+
+    if (isset($_POST['cadastrar'])) {
+        $stmt = $pdo->prepare("INSERT INTO categorias_orcamento (nome, limite_ideal, categoria_pai, tipo) VALUES (?, ?, ?, ?)");
+        if ($stmt->execute([$nome, $limite, $pai, $tipo])) {
+            $_SESSION['mensagem'] = "Categoria '{$nome}' cadastrada com sucesso.";
         } else {
-            $stmt = $pdo->prepare("INSERT INTO categorias_orcamento (nome, limite_ideal, categoria_pai) VALUES (?, ?, ?)");
-            if ($stmt->execute([$nome, $limite, $pai])) {
-                $_SESSION['mensagem'] = "Categoria '{$nome}' cadastrada com sucesso.";
-            } else {
-                $_SESSION['erro'] = "Erro ao cadastrar a categoria '{$nome}'.";
-            }
+            $_SESSION['erro'] = "Erro ao cadastrar a categoria '{$nome}'.";
         }
         header("Location: categorias.php");
         exit();
     }
+
     if (isset($_POST['editar'])) {
         $id = (int)($_POST['id'] ?? 0);
-        $nome = trim($_POST['nome'] ?? '');
-        $limite = str_replace(',', '.', $_POST['limite'] ?? '');
-        $pai = $_POST['pai'] ?: null;
-
-        if ($id <= 0 || $nome === '' || $limite === '' || !is_numeric($limite)) {
-            $_SESSION['erro'] = "Dados inválidos para edição.";
+        if ($id <= 0) {
+            $_SESSION['erro'] = "ID inválido para edição.";
+            header("Location: categorias.php");
+            exit();
+        }
+        $stmt = $pdo->prepare("UPDATE categorias_orcamento SET nome = ?, limite_ideal = ?, categoria_pai = ?, tipo = ? WHERE id = ?");
+        if ($stmt->execute([$nome, $limite, $pai, $tipo, $id])) {
+            $_SESSION['mensagem'] = "Categoria '{$nome}' atualizada com sucesso.";
         } else {
-            $stmt = $pdo->prepare("UPDATE categorias_orcamento SET nome = ?, limite_ideal = ?, categoria_pai = ? WHERE id = ?");
-            if ($stmt->execute([$nome, $limite, $pai, $id])) {
-                $_SESSION['mensagem'] = "Categoria '{$nome}' atualizada com sucesso.";
-            } else {
-                $_SESSION['erro'] = "Erro ao atualizar a categoria '{$nome}'.";
-            }
+            $_SESSION['erro'] = "Erro ao atualizar a categoria '{$nome}'.";
         }
         header("Location: categorias.php");
         exit();
     }
 }
 
-// Buscar categorias e organizar hierarquia
-$stmt = $pdo->query("SELECT id, nome, limite_ideal, categoria_pai FROM categorias_orcamento ORDER BY categoria_pai, nome");
+// Busca categorias para listagem
+$stmt = $pdo->query("SELECT id, nome, limite_ideal, categoria_pai, tipo FROM categorias_orcamento ORDER BY categoria_pai, nome");
 $cats = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+// Organização hierárquica
 $parents = [];
 $children = [];
 foreach ($cats as $cat) {
@@ -113,6 +113,7 @@ foreach ($cats as $cat) {
             <tr>
                 <th>Categoria <button class="btn btn-sm btn-outline-secondary" onclick="toggleAllSubs()">Expandir</button></th>
                 <th>Valor (R$)</th>
+                <th>Tipo</th>
                 <th>Ações</th>
             </tr>
         </thead>
@@ -135,9 +136,16 @@ foreach ($cats as $cat) {
                         <?php endif; ?>
                         <strong><?= htmlspecialchars($parent['nome']) ?></strong>
                     </td>
-                    <td><?= number_format($total,2,',','.') ?></td>
+                    <td><?= number_format($total, 2, ',', '.') ?></td>
+                    <td><?= htmlspecialchars(ucfirst($parent['tipo'])) ?></td>
                     <td>
-                        <button class="btn btn-warning btn-sm" onclick="editCat(<?= $parent['id'] ?>, '<?= addslashes($parent['nome']) ?>', '<?= $parent['limite_ideal'] ?>', '')">Editar</button>
+                        <button class="btn btn-warning btn-sm" onclick="editCat(
+                            <?= $parent['id'] ?>,
+                            '<?= addslashes($parent['nome']) ?>',
+                            '<?= $parent['limite_ideal'] ?>',
+                            '<?= htmlspecialchars(addslashes($parent['categoria_pai'] ?? '')) ?>',
+                            '<?= $parent['tipo'] ?>'
+                        )">Editar</button>
                         <a href="?delete_id=<?= $parent['id'] ?>" onclick="return confirm('Confirma exclusão?')" class="btn btn-danger btn-sm">Excluir</a>
                     </td>
                 </tr>
@@ -145,9 +153,16 @@ foreach ($cats as $cat) {
                     <?php foreach ($children[$parent['nome']] as $child): ?>
                         <tr class="subrow-<?= $parent['id'] ?>" style="display:none;">
                             <td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↳ <?= htmlspecialchars($child['nome']) ?></td>
-                            <td><?= number_format($child['limite_ideal'],2,',','.') ?></td>
+                            <td><?= number_format($child['limite_ideal'], 2, ',', '.') ?></td>
+                            <td><?= htmlspecialchars(ucfirst($child['tipo'])) ?></td>
                             <td>
-                                <button class="btn btn-warning btn-sm" onclick="editCat(<?= $child['id'] ?>, '<?= addslashes($child['nome']) ?>', '<?= $child['limite_ideal'] ?>', '<?= htmlspecialchars(addslashes($parent['nome'])) ?>')">Editar</button>
+                                <button class="btn btn-warning btn-sm" onclick="editCat(
+                                    <?= $child['id'] ?>,
+                                    '<?= addslashes($child['nome']) ?>',
+                                    '<?= $child['limite_ideal'] ?>',
+                                    '<?= htmlspecialchars(addslashes($parent['nome'])) ?>',
+                                    '<?= $child['tipo'] ?>'
+                                )">Editar</button>
                                 <a href="?delete_id=<?= $child['id'] ?>" onclick="return confirm('Confirma exclusão?')" class="btn btn-danger btn-sm">Excluir</a>
                             </td>
                         </tr>
@@ -158,7 +173,7 @@ foreach ($cats as $cat) {
     </table>
 </div>
 
-<!-- Modal + Nova Categoria -->
+<!-- Modal Nova Categoria / Subcategoria -->
 <div class="modal fade" id="modalAdd" tabindex="-1" aria-labelledby="modalAddLabel" aria-hidden="true">
     <div class="modal-dialog">
         <form class="modal-content" method="post" action="">
@@ -175,7 +190,7 @@ foreach ($cats as $cat) {
                 <div class="mb-3">
                     <label class="form-label">Categoria Pai (opcional)</label>
                     <select name="pai" class="form-select">
-                        <option value="">Nenhum (categoria principal)</option>
+                        <option value="">Nenhuma (categoria principal)</option>
                         <?php foreach ($parents as $p): ?>
                             <option><?= htmlspecialchars($p['nome']) ?></option>
                         <?php endforeach; ?>
@@ -184,7 +199,14 @@ foreach ($cats as $cat) {
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Limite (R$)</label>
-                    <input name="limite" type="number" step="0.01" class="form-control" required/>
+                    <input name="limite_ideal" type="number" step="0.01" class="form-control" required/>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Tipo</label>
+                    <select name="tipo" class="form-select" required>
+                        <option value="despesa" selected>Despesa</option>
+                        <option value="receita">Receita</option>
+                    </select>
                 </div>
             </div>
             <div class="modal-footer">
@@ -213,7 +235,7 @@ foreach ($cats as $cat) {
                 <div class="mb-3">
                     <label class="form-label">Categoria Pai (opcional)</label>
                     <select name="pai" id="editPai" class="form-select">
-                        <option value="">Nenhum (categoria principal)</option>
+                        <option value="">Nenhuma (categoria principal)</option>
                         <?php foreach ($parents as $p): ?>
                             <option><?= htmlspecialchars($p['nome']) ?></option>
                         <?php endforeach; ?>
@@ -222,7 +244,14 @@ foreach ($cats as $cat) {
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Limite (R$)</label>
-                    <input name="limite" id="editLimite" type="number" step="0.01" class="form-control" required />
+                    <input name="limite_ideal" id="editLimite" type="number" step="0.01" class="form-control" required />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Tipo</label>
+                    <select name="tipo" id="editTipo" class="form-select" required>
+                        <option value="despesa">Despesa</option>
+                        <option value="receita">Receita</option>
+                    </select>
                 </div>
             </div>
             <div class="modal-footer">
@@ -234,11 +263,12 @@ foreach ($cats as $cat) {
 </div>
 
 <script>
-function editCat(id, nome, limite, pai) {
+function editCat(id, nome, limite, pai, tipo) {
     document.getElementById('editId').value = id;
     document.getElementById('editNome').value = nome;
     document.getElementById('editLimite').value = limite;
     document.getElementById('editPai').value = pai || '';
+    document.getElementById('editTipo').value = tipo || 'despesa';
     new bootstrap.Modal(document.getElementById('modalEdit')).show();
 }
 
