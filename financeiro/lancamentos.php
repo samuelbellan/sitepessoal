@@ -9,6 +9,9 @@ $mensagem = $_SESSION['mensagem'] ?? '';
 $erro = $_SESSION['erro'] ?? '';
 unset($_SESSION['mensagem'], $_SESSION['erro']);
 
+// Categorias para filtro e cadastro
+$cats_sistema = $pdo->query("SELECT nome FROM categorias_orcamento ORDER BY nome")->fetchAll(PDO::FETCH_COLUMN);
+
 // Processar novo lançamento
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['novo_lancamento'])) {
     $descricao = $_POST['descricao'] ?? '';
@@ -16,13 +19,20 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['novo_lancamento'])) {
     $valor = str_replace(',', '.', $_POST['valor'] ?? '0');
     $tipo = $_POST['tipo'] ?? '';
     $data = $_POST['data'] ?? '';
-    
+
+    // Validação da categoria
+    if (!in_array($categoria, $cats_sistema)) {
+        $_SESSION['erro'] = "Selecione uma categoria válida.";
+        header('Location: lancamentos.php');
+        exit;
+    }
+
     if (empty($descricao) || empty($valor) || !is_numeric($valor) || $valor <= 0 || empty($tipo) || !in_array($tipo, ['entrada', 'saida']) || empty($data)) {
         $_SESSION['erro'] = "Preencha todos os campos obrigatórios corretamente.";
     } else {
         try {
             $stmt = $pdo->prepare("INSERT INTO financeiro (descricao, categoria, valor, tipo, data) VALUES (?, ?, ?, ?, ?)");
-            $stmt->execute([$descricao, $categoria ?: null, $valor, $tipo, $data]);
+            $stmt->execute([$descricao, $categoria, $valor, $tipo, $data]);
             $_SESSION['mensagem'] = "Lançamento adicionado com sucesso!";
         } catch (PDOException $e) {
             $_SESSION['erro'] = "Erro ao salvar o lançamento.";
@@ -107,12 +117,12 @@ $todas_categorias = array_unique(array_merge($categorias, $cats_sistema));
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Categoria</label>
-                            <input type="text" name="categoria" class="form-control" list="categoriasList">
-                            <datalist id="categoriasList">
-                                <?php foreach ($todas_categorias as $c): ?>
-                                    <option value="<?= htmlspecialchars($c) ?>">
+                            <select name="categoria" class="form-select" required>
+                                <option value="">Selecione</option>
+                                <?php foreach ($cats_sistema as $c): ?>
+                                    <option value="<?= htmlspecialchars($c) ?>"><?= htmlspecialchars($c) ?></option>
                                 <?php endforeach; ?>
-                            </datalist>
+                            </select>
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Valor</label>
