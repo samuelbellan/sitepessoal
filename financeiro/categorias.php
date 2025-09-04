@@ -13,20 +13,20 @@ unset($_SESSION['mensagem'], $_SESSION['erro']);
 if (isset($_GET['delete_id']) && ctype_digit($_GET['delete_id'])) {
     $delete_id = (int)$_GET['delete_id'];
     // Busca o nome da categoria a excluir
-    $stmt = $pdo->prepare("SELECT nome FROM categorias WHERE id = ?");
+    $stmt = $pdo->prepare("SELECT nome FROM categorias_orcamento WHERE id = ?");
     $stmt->execute([$delete_id]);
     $catNome = $stmt->fetchColumn();
 
     if ($catNome) {
         // Verifica se possui subcategorias vinculadas
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM categorias WHERE categoria_pai = ?");
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM categorias_orcamento WHERE categoria_pai = ?");
         $stmt->execute([$catNome]);
         $count = $stmt->fetchColumn();
 
         if ($count > 0) {
             $_SESSION['erro'] = "Não é possível excluir a categoria '{$catNome}' pois possui subcategorias vinculadas.";
         } else {
-            $stmt = $pdo->prepare("DELETE FROM categorias WHERE id = ?");
+            $stmt = $pdo->prepare("DELETE FROM categorias_orcamento WHERE id = ?");
             if ($stmt->execute([$delete_id])) {
                 $_SESSION['mensagem'] = "Categoria '{$catNome}' removida com sucesso.";
             } else {
@@ -36,7 +36,7 @@ if (isset($_GET['delete_id']) && ctype_digit($_GET['delete_id'])) {
     } else {
         $_SESSION['erro'] = "Categoria não encontrada.";
     }
-    header("Location: categories.php");
+    header("Location: categorias.php");
     exit();
 }
 
@@ -44,39 +44,39 @@ if (isset($_GET['delete_id']) && ctype_digit($_GET['delete_id'])) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['cadastrar'])) {
         $nome = trim($_POST['nome'] ?? '');
-        $limite = str_replace(',', '.', $_POST['limite_ideal'] ?? '');
+        $limite = str_replace(',', '.', $_POST['limite'] ?? '');
         $pai = $_POST['pai'] ?: null;
 
         if ($nome === '' || $limite === '' || !is_numeric($limite)) {
             $_SESSION['erro'] = "Preencha todos os campos corretamente.";
         } else {
-            $stmt = $pdo->prepare("INSERT INTO categorias (nome, limite_ideal, categoria_pai) VALUES (?, ?, ?)");
+            $stmt = $pdo->prepare("INSERT INTO categorias_orcamento (nome, limite_ideal, categoria_pai) VALUES (?, ?, ?)");
             if ($stmt->execute([$nome, $limite, $pai])) {
                 $_SESSION['mensagem'] = "Categoria '{$nome}' cadastrada com sucesso.";
             } else {
                 $_SESSION['erro'] = "Erro ao cadastrar a categoria '{$nome}'.";
             }
         }
-        header("Location: categories.php");
+        header("Location: categorias.php");
         exit();
     }
     if (isset($_POST['editar'])) {
         $id = (int)($_POST['id'] ?? 0);
         $nome = trim($_POST['nome'] ?? '');
-        $limite = str_replace(',', '.', $_POST['limite_ideal'] ?? '');
+        $limite = str_replace(',', '.', $_POST['limite'] ?? '');
         $pai = $_POST['pai'] ?: null;
 
         if ($id <= 0 || $nome === '' || $limite === '' || !is_numeric($limite)) {
             $_SESSION['erro'] = "Dados inválidos para edição.";
         } else {
-            $stmt = $pdo->prepare("UPDATE categorias SET nome = ?, limite_ideal = ?, categoria_pai = ? WHERE id = ?");
+            $stmt = $pdo->prepare("UPDATE categorias_orcamento SET nome = ?, limite_ideal = ?, categoria_pai = ? WHERE id = ?");
             if ($stmt->execute([$nome, $limite, $pai, $id])) {
                 $_SESSION['mensagem'] = "Categoria '{$nome}' atualizada com sucesso.";
             } else {
                 $_SESSION['erro'] = "Erro ao atualizar a categoria '{$nome}'.";
             }
         }
-        header("Location: categories.php");
+        header("Location: categorias.php");
         exit();
     }
 }
@@ -111,7 +111,7 @@ foreach ($cats as $cat) {
     <table class="table table-striped">
         <thead>
             <tr>
-                <th>Categoria <button class="btn btn-sm btn-outline-secondary" onclick="toggleAllSubs()">Expand/Collapse Subcategorias</button></th>
+                <th>Categoria <button class="btn btn-sm btn-outline-secondary" onclick="toggleAllSubs()">Expandir</button></th>
                 <th>Valor (R$)</th>
                 <th>Ações</th>
             </tr>
@@ -158,7 +158,7 @@ foreach ($cats as $cat) {
     </table>
 </div>
 
-<!-- Modal Adicionar -->
+<!-- Modal + Nova Categoria -->
 <div class="modal fade" id="modalAdd" tabindex="-1" aria-labelledby="modalAddLabel" aria-hidden="true">
     <div class="modal-dialog">
         <form class="modal-content" method="post" action="">
