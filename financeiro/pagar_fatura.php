@@ -6,64 +6,62 @@ session_start();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $cartao_id = $_POST['cartao_id'] ?? null;
-    $vencimento_mes = $_POST['vencimento_mes'] ?? null;
+    $mes = $_POST['mes'] ?? null;
 
-    if (!$cartao_id || !$vencimento_mes) {
-        $_SESSION['erro'] = "Dados de pagamento incompletos.";
-        header('Location: index.php');
+    if (!$cartao_id || !$mes) {
+        $_SESSION['erro'] = "Dados insuficientes para o pagamento.";
+        header('Location: cartoes.php');
         exit;
     }
 
     try {
         $pdo->beginTransaction();
 
-        // Verifica se ainda existem parcelas em aberto para este cartão e mês
-        $stmt_total = $pdo->prepare("
-            SELECT SUM(p.valor) AS total
-            FROM parcelas_cartao p
-            JOIN transacoes_cartao t ON p.transacao_id = t.id
-            WHERE t.cartao_id = ? AND p.paga = 0 AND DATE_FORMAT(p.vencimento, '%Y-%m') = ?
-        ");
-        $stmt_total->execute([$cartao_id, $vencimento_mes]);
-        $valor_pago = $stmt_total->fetchColumn();
+        // Verifica se há parcelas abertas
+        $stmtCheck = $pdo->prepare("SELECT COUNT(*) FROM parcelas_cartao pc
+                                    JOIN transacoes_cartao tc ON pc.transacao_id = tc.id
+                                    WHERE tc.cartao_id = ? AND pc.paga = 0 AND DATE_FORMAT(pc.vencimento, '%Y-%m') = ?");
+        $stmtCheck->execute([$cartao_id, $mes]);
+        $count = $stmtCheck->fetchColumn();
 
-        if ($valor_pago > 0) {
-            // Marca como pagas
-            $stmt_update_parcelas = $pdo->prepare("
-                UPDATE parcelas_cartao p
-                JOIN transacoes_cartao t ON p.transacao_id = t.id
-                SET p.paga = 1
-                WHERE t.cartao_id = ? AND p.paga = 0 AND DATE_FORMAT(p.vencimento, '%Y-%m') = ?
-            ");
-            $stmt_update_parcelas->execute([$cartao_id, $vencimento_mes]);
-
-            // Lança no financeiro
-            $stmt_lancamento = $pdo->prepare("
-                INSERT INTO financeiro (descricao, categoria, valor, tipo, data)
-                VALUES (?, ?, ?, 'saida', ?)
-            ");
-            $descricao = "Pagamento da fatura do cartão (id: {$cartao_id}) - " . date('m/Y', strtotime($vencimento_mes));
-            $categoria = "Pagamento de Fatura";
-            $data_pagamento = date('Y-m-d');
-            $stmt_lancamento->execute([$descricao, $categoria, $valor_pago, $data_pagamento]);
-
-            $_SESSION['mensagem'] = "Fatura do cartão paga com sucesso!";
-        } else {
-            $_SESSION['mensagem'] = "Fatura já está quitada ou não há parcelas pendentes para este mês.";
+        if ($count == 0) {
+            $_SESSION['mensagem'] = "Nenhuma parcela pendente para pagamento.";
+            $pdo->commit();
+            header('Location: cartoes.php');
+            exit;
         }
+
+        // Marca parcelas como pagas
+        $stmtUpdate = $pdo->prepare("UPDATE parcelas_cartao pc
+                                     JOIN transacoes_cartao tc ON pc.transacao_id = tc.id
+                                     SET pc.paga = 1
+                                     WHERE tc.cartao_id = ? AND pc.paga = 0 AND DATE_FORMAT(pc.vencimento, '%Y-%m') = ?");
+        $stmtUpdate->execute([$cartao_id, $mes]);
+
+        // Soma valor pago para lançamento financeiro
+        $stmtGetValue = $pdo->prepare("SELECT SUM(pc.valor) FROM parcelas_cartao pc
+                                      JOIN transacoes_cartao tc ON pc.transacao_id = tc.id
+                                      WHERE tc.cartao_id = ? AND DATE_FORMAT(pc.vencimento, '%Y-%m') = ?");
+        $stmtGetValue->execute([$cartao_id, $mes]);
+        $totalPago = $stmtGetValue->fetchColumn();
+
+        // Registrar no financeiro
+        $stmtFin = $pdo->prepare("INSERT INTO financeiro (descricao, categoria, valor, tipo, data) VALUES (?, ?, ?, 'saida', ?)");
+        $descricao = "Pagamento fatura cartão ID {$cartao_id} - " . date('m/Y', strtotime($mes . '-01'));
+        $dataPagamento = date('Y-m-d');
+        $stmtFin->execute([$descricao, 'Pagamento de Fatura', $totalPago, $dataPagamento]);
 
         $pdo->commit();
-    } catch (PDOException $e) {
-        if ($pdo->inTransaction()) {
-            $pdo->rollBack();
-        }
-        $_SESSION['erro'] = "Erro ao processar o pagamento: " . $e->getMessage();
+
+        $_SESSION['mensagem'] = "Fatura do cartão paga com sucesso.";
+    } catch (Exception $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        $_SESSION['erro'] = "Erro: " . $e->getMessage();
     }
 
-    header('Location: index.php');
+    header('Location: cartoes.php');
     exit;
 }
 
-header('Location: index.php');
+header('Location: cartoes.php');
 exit;
-?>
