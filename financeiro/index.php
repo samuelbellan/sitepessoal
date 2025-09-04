@@ -10,6 +10,23 @@ $erro = $_SESSION['erro'] ?? '';
 unset($_SESSION['mensagem']);
 unset($_SESSION['erro']);
 
+// NOVO: Cadastro de categoria/subcategoria e limite ideal
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cadastrar_categoria'])) {
+    $nova_categoria = trim($_POST['nome_categoria'] ?? '');
+    $limite_ideal = str_replace(',', '.', $_POST['limite_ideal'] ?? '0');
+    $categoria_pai = trim($_POST['categoria_pai'] ?? '') ?: null; // NULL se vazio
+    
+    if ($nova_categoria && is_numeric($limite_ideal)) {
+        $stmt = $pdo->prepare("INSERT IGNORE INTO categorias_orcamento (nome, limite_ideal, categoria_pai) VALUES (?, ?, ?)");
+        $stmt->execute([$nova_categoria, $limite_ideal, $categoria_pai]);
+        $_SESSION['mensagem'] = $categoria_pai ? "Subcategoria cadastrada!" : "Categoria cadastrada!";
+    } else {
+        $_SESSION['erro'] = "Preencha todos os campos corretamente.";
+    }
+    header('Location: index.php');
+    exit;
+}
+
 // --- FILTROS ---
 $filtroCategoria = $_GET['categoria'] ?? '';
 $filtroDataInicio = $_GET['data_inicio'] ?? '';
@@ -17,12 +34,10 @@ $filtroDataFim = $_GET['data_fim'] ?? '';
 
 $where = [];
 $params = [];
-
 if ($filtroCategoria != '') {
     $where[] = "categoria = :categoria";
     $params[':categoria'] = $filtroCategoria;
 }
-
 if ($filtroDataInicio != '') {
     $where[] = "data >= :data_inicio";
     $params[':data_inicio'] = $filtroDataInicio;
@@ -31,7 +46,6 @@ if ($filtroDataFim != '') {
     $where[] = "data <= :data_fim";
     $params[':data_fim'] = $filtroDataFim;
 }
-
 $whereSQL = $where ? "WHERE " . implode(" AND ", $where) : "";
 
 // --- CONSULTAS ---
@@ -69,6 +83,22 @@ $valSaidas = array_column($dadosMes, 'saídas');
 // Obter categorias existentes
 $categorias = $pdo->query("SELECT DISTINCT categoria FROM financeiro WHERE categoria IS NOT NULL AND categoria != ''")->fetchAll(PDO::FETCH_COLUMN);
 
+// NOVO: Obter estrutura hierárquica de categorias
+$stmt_todas_categorias = $pdo->query("SELECT nome, limite_ideal, categoria_pai FROM categorias_orcamento ORDER BY categoria_pai, nome");
+$todas_cats = $stmt_todas_categorias->fetchAll(PDO::FETCH_ASSOC);
+
+// Organizar em estrutura hierárquica
+$cats_principais = []; // Categorias sem pai
+$cats_filhas = [];     // Subcategorias agrupadas por pai
+
+foreach ($todas_cats as $cat) {
+    if ($cat['categoria_pai'] === null) {
+        $cats_principais[$cat['nome']] = $cat['limite_ideal'];
+    } else {
+        $cats_filhas[$cat['categoria_pai']][] = $cat;
+    }
+}
+
 // Buscar cartões para o formulário de transações
 $stmtCartoes = $pdo->query("SELECT id, nome, limite, dia_fechamento, dia_vencimento FROM cartoes_credito ORDER BY nome");
 $cartoes = $stmtCartoes->fetchAll(PDO::FETCH_ASSOC);
@@ -82,7 +112,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['tipo_lancamento']) && 
     $valor = str_replace(',', '.', $_POST['valor'] ?? '0');
     $tipo = $_POST['tipo'] ?? '';
     $data = $_POST['data'] ?? '';
-
     if (empty($descricao) || empty($valor) || !is_numeric($valor) || $valor <= 0 || empty($tipo) || !in_array($tipo, ['entrada', 'saida']) || empty($data)) {
         $_SESSION['erro'] = "Erro: Preencha todos os campos obrigatórios corretamente.";
     } else {
@@ -134,47 +163,32 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['tipo_lancamento']) && 
             $valor_total   = $toFloat($_POST['valor_total'] ?? '0');
             $valor_parcela = $parcelas > 0 ? round($valor_total / $parcelas, 2) : 0.00;
         }
-
         if ($valor_total <= 0 || $valor_parcela <= 0) {
             $_SESSION['erro'] = "Valor inválido.";
         } else {
             try {
                 $pdo->beginTransaction();
-
-                $stmt = $pdo->prepare("
-                    INSERT INTO transacoes_cartao (cartao_id, descricao, valor, data_compra, parcelas, recorrente)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                ");
+                $stmt = $pdo->prepare("INSERT INTO transacoes_cartao (cartao_id, descricao, valor, data_compra, parcelas, recorrente) VALUES (?, ?, ?, ?, ?, ?)");
                 $stmt->execute([$cartao_id, $descricao, $valor_total, $data_compra, $parcelas, $recorrente]);
                 $transacao_id = (int)$pdo->lastInsertId();
-
                 $dia_fechamento = (int)$cartao['dia_fechamento'];
                 $dia_vencimento = (int)$cartao['dia_vencimento'];
                 $data_compra_obj = new DateTime($data_compra);
-
                 for ($i = 0; $i < $parcelas; $i++) {
                     $numero_parcela = $i + 1;
                     $data_parcela_base = (clone $data_compra_obj)->modify("+$i months");
                     $dia_compra_parcela = (int)$data_parcela_base->format('d');
-
                     if ($dia_compra_parcela > $dia_fechamento) {
                         $data_parcela_base->modify('+1 month');
                     }
-
                     $data_vencimento = (clone $data_parcela_base)->setDate(
                         (int)$data_parcela_base->format('Y'),
                         (int)$data_parcela_base->format('m'),
                         $dia_vencimento
                     );
-
                     $paga = ($numero_parcela < $parcela_atual) ? 1 : 0;
-
-                    $stmt_parcela = $pdo->prepare("
-                        INSERT INTO parcelas_cartao (transacao_id, numero_parcela, valor, vencimento, paga)
-                        VALUES (?, ?, ?, ?, ?)
-                    ");
+                    $stmt_parcela = $pdo->prepare("INSERT INTO parcelas_cartao (transacao_id, numero_parcela, valor, vencimento, paga) VALUES (?, ?, ?, ?, ?)");
                     $stmt_parcela->execute([$transacao_id, $numero_parcela, $valor_parcela, $data_vencimento->format('Y-m-d'), $paga]);
-
                     $previsao_faturas[] = [
                         'parcela'    => $numero_parcela,
                         'valor'      => number_format($valor_parcela, 2, ',', '.'),
@@ -183,13 +197,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['tipo_lancamento']) && 
                         'paga'       => $paga
                     ];
                 }
-
                 $pdo->commit();
-
-                $_SESSION['mensagem'] = "Transação de cartão adicionada com sucesso! Valor total: R$ " .
-                    number_format($valor_total, 2, ',', '.') .
-                    " — Parcela: R$ " . number_format($valor_parcela, 2, ',', '.') .
-                    " x $parcelas" . ($parcela_atual > 1 ? " (parcelas 1–" . ($parcela_atual - 1) . " já pagas)" : "");
+                $_SESSION['mensagem'] = "Transação de cartão adicionada com sucesso! Valor total: R$ " . number_format($valor_total, 2, ',', '.') . " — Parcela: R$ " . number_format($valor_parcela, 2, ',', '.') . " x $parcelas" . ($parcela_atual > 1 ? " (parcelas 1–" . ($parcela_atual - 1) . " já pagas)" : "");
             } catch (PDOException $e) {
                 if ($pdo->inTransaction()) $pdo->rollBack();
                 error_log("Erro ao inserir transação/cartão: " . $e->getMessage());
@@ -201,97 +210,122 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['tipo_lancamento']) && 
     exit;
 }
 
-
-// --- LÓGICA DO NOVO MÓDULO DE ORÇAMENTO ---
+// --- LÓGICA DO ORÇAMENTO COM SUBCATEGORIAS ---
 $mesAtual = date('Y-m');
 
 // 1. Buscar o valor planejado para cada categoria
-$stmtPlanejado = $pdo->prepare("
-    SELECT categoria, valor_planejado
-    FROM planejamento_mensal
-    WHERE mes_ano = ?
-");
+$stmtPlanejado = $pdo->prepare("SELECT categoria, valor_planejado FROM planejamento_mensal WHERE mes_ano = ?");
 $stmtPlanejado->execute([$mesAtual]);
 $planejado = $stmtPlanejado->fetchAll(PDO::FETCH_KEY_PAIR);
 
 // 2. Buscar os gastos reais para o mês atual (exclui pagamentos de fatura)
-$stmtReal = $pdo->prepare("
-    SELECT categoria, SUM(valor) as valor_real
-    FROM financeiro
-    WHERE tipo = 'saida' AND categoria != 'Pagamento de Fatura' AND DATE_FORMAT(data, '%Y-%m') = ?
-    GROUP BY categoria
-");
+$stmtReal = $pdo->prepare("SELECT categoria, SUM(valor) as valor_real FROM financeiro WHERE tipo = 'saida' AND categoria != 'Pagamento de Fatura' AND DATE_FORMAT(data, '%Y-%m') = ? GROUP BY categoria");
 $stmtReal->execute([$mesAtual]);
 $real = $stmtReal->fetchAll(PDO::FETCH_KEY_PAIR);
 
-// 3. Unir os dados para exibição
-$controle_mensal = [];
-$todas_categorias = array_unique(array_merge(array_keys($planejado), array_keys($real)));
-foreach ($todas_categorias as $cat) {
-    $valor_planejado = $planejado[$cat] ?? 0;
-    $valor_real = $real[$cat] ?? 0;
-    $diferenca = $valor_planejado - $valor_real;
+// 3. NOVA LÓGICA: Agrupar categorias e subcategorias
+function calcularTotaisHierarquicos($cats_principais, $cats_filhas, $planejado, $real) {
+    $controle_hierarquico = [];
     
-    $controle_mensal[] = [
-        'categoria' => $cat,
-        'planejado' => $valor_planejado,
-        'real' => $valor_real,
-        'diferenca' => $diferenca
-    ];
+    foreach ($cats_principais as $cat_principal => $limite_ideal) {
+        // Valores da categoria principal
+        $valor_planejado_principal = $planejado[$cat_principal] ?? 0;
+        $valor_real_principal = $real[$cat_principal] ?? 0;
+        
+        // Somar valores das subcategorias
+        $limite_ideal_total = $limite_ideal;
+        $valor_planejado_total = $valor_planejado_principal;
+        $valor_real_total = $valor_real_principal;
+        
+        if (isset($cats_filhas[$cat_principal])) {
+            foreach ($cats_filhas[$cat_principal] as $subcat) {
+                $limite_ideal_total += $subcat['limite_ideal'];
+                $valor_planejado_total += $planejado[$subcat['nome']] ?? 0;
+                $valor_real_total += $real[$subcat['nome']] ?? 0;
+            }
+        }
+        
+        $diferenca = $valor_planejado_total - $valor_real_total;
+        
+        // Categoria principal
+        $controle_hierarquico[] = [
+            'categoria'      => $cat_principal,
+            'limite_ideal'   => $limite_ideal_total,
+            'planejado'      => $valor_planejado_total,
+            'real'           => $valor_real_total,
+            'diferenca'      => $diferenca,
+            'is_subcategoria' => false,
+            'categoria_pai'  => null
+        ];
+        
+        // Subcategorias
+        if (isset($cats_filhas[$cat_principal])) {
+            foreach ($cats_filhas[$cat_principal] as $subcat) {
+                $sub_planejado = $planejado[$subcat['nome']] ?? 0;
+                $sub_real = $real[$subcat['nome']] ?? 0;
+                $sub_diferenca = $sub_planejado - $sub_real;
+                
+                $controle_hierarquico[] = [
+                    'categoria'      => $subcat['nome'],
+                    'limite_ideal'   => $subcat['limite_ideal'],
+                    'planejado'      => $sub_planejado,
+                    'real'           => $sub_real,
+                    'diferenca'      => $sub_diferenca,
+                    'is_subcategoria' => true,
+                    'categoria_pai'  => $cat_principal
+                ];
+            }
+        }
+    }
+    
+    // Adicionar categorias sem estrutura hierárquica (compatibilidade)
+    $todas_categorias_hierarquicas = array_merge(array_keys($cats_principais), 
+        array_reduce($cats_filhas, function($carry, $subs) {
+            return array_merge($carry, array_column($subs, 'nome'));
+        }, []));
+    
+    $categorias_restantes = array_diff(array_unique(array_merge(array_keys($planejado), array_keys($real))), $todas_categorias_hierarquicas);
+    
+    foreach ($categorias_restantes as $cat) {
+        $controle_hierarquico[] = [
+            'categoria'      => $cat,
+            'limite_ideal'   => 0,
+            'planejado'      => $planejado[$cat] ?? 0,
+            'real'           => $real[$cat] ?? 0,
+            'diferenca'      => ($planejado[$cat] ?? 0) - ($real[$cat] ?? 0),
+            'is_subcategoria' => false,
+            'categoria_pai'  => null
+        ];
+    }
+    
+    return $controle_hierarquico;
 }
 
+$controle_mensal = calcularTotaisHierarquicos($cats_principais, $cats_filhas, $planejado, $real);
 
 // Calcular faturas pendentes de cartões
 $faturasPendentes = [];
 $mesAtual = date('Y-m');
 
-$stmtFaturas = $pdo->prepare("
-    SELECT
-        c.id AS cartao_id,
-        c.nome AS cartao_nome,
-        MIN(p.vencimento) AS vencimento,
-        SUM(p.valor) AS total_fatura
-    FROM parcelas_cartao p
-    JOIN transacoes_cartao t ON p.transacao_id = t.id
-    JOIN cartoes_credito c   ON t.cartao_id = c.id
-    WHERE p.paga = 0
-      AND DATE_FORMAT(p.vencimento, '%Y-%m') = ?
-    GROUP BY c.id, c.nome
-    ORDER BY c.nome
-");
+$stmtFaturas = $pdo->prepare("SELECT c.id AS cartao_id, c.nome AS cartao_nome, MIN(p.vencimento) AS vencimento, SUM(p.valor) AS total_fatura FROM parcelas_cartao p JOIN transacoes_cartao t ON p.transacao_id = t.id JOIN cartoes_credito c ON t.cartao_id = c.id WHERE p.paga = 0 AND DATE_FORMAT(p.vencimento, '%Y-%m') = ? GROUP BY c.id, c.nome ORDER BY c.nome");
 $stmtFaturas->execute([$mesAtual]);
 $faturasPendentes = $stmtFaturas->fetchAll(PDO::FETCH_ASSOC);
 
 // Buscar todas as transações de cartão para a tabela
-$stmtTransacoes = $pdo->query("
-    SELECT t.*, c.nome AS cartao_nome,
-           (SELECT COUNT(*) FROM parcelas_cartao p WHERE p.transacao_id = t.id AND p.paga = 0) as parcelas_pendentes
-    FROM transacoes_cartao t
-    JOIN cartoes_credito c ON t.cartao_id = c.id
-    ORDER BY t.data_compra DESC
-");
+$stmtTransacoes = $pdo->query("SELECT t.*, c.nome AS cartao_nome, (SELECT COUNT(*) FROM parcelas_cartao p WHERE p.transacao_id = t.id AND p.paga = 0) as parcelas_pendentes FROM transacoes_cartao t JOIN cartoes_credito c ON t.cartao_id = c.id ORDER BY t.data_compra DESC");
 $transacoesCartao = $stmtTransacoes->fetchAll(PDO::FETCH_ASSOC);
 
 // Processar formulário de orçamento
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['tipo_lancamento']) && $_POST['tipo_lancamento'] == 'orcamento') {
     $mes_ano = $_POST['mes_ano'] ?? date('Y-m');
     $planejadoForm = $_POST['planejado'] ?? [];
-
     try {
         $pdo->beginTransaction();
-
         foreach ($planejadoForm as $categoria => $valor) {
             $valor = (float)str_replace(',', '.', $valor);
-
-            // Se já existir, faz update; se não, faz insert
-            $stmt = $pdo->prepare("
-                INSERT INTO planejamento_mensal (mes_ano, categoria, valor_planejado)
-                VALUES (?, ?, ?)
-                ON DUPLICATE KEY UPDATE valor_planejado = VALUES(valor_planejado)
-            ");
+            $stmt = $pdo->prepare("INSERT INTO planejamento_mensal (mes_ano, categoria, valor_planejado) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE valor_planejado = VALUES(valor_planejado)");
             $stmt->execute([$mes_ano, $categoria, $valor]);
         }
-
         $pdo->commit();
         $_SESSION['mensagem'] = "Orçamento atualizado com sucesso!";
     } catch (PDOException $e) {
@@ -299,12 +333,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['tipo_lancamento']) && 
         error_log("Erro orçamento: " . $e->getMessage());
         $_SESSION['erro'] = "Erro ao salvar orçamento.";
     }
-
     header("Location: index.php");
     exit;
 }
 
-
+// Buscar categorias principais para o select
+$stmt_cats_principais = $pdo->query("SELECT nome FROM categorias_orcamento WHERE categoria_pai IS NULL ORDER BY nome");
+$categorias_principais = $stmt_cats_principais->fetchAll(PDO::FETCH_COLUMN);
 ?>
 
 <div class="container mt-4">
@@ -344,6 +379,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['tipo_lancamento']) && 
                             <datalist id="categoriasList">
                                 <?php foreach ($categorias as $c): ?>
                                     <option value="<?= htmlspecialchars($c) ?>">
+                                <?php endforeach; ?>
+                                <?php foreach ($todas_cats as $cat): ?>
+                                    <option value="<?= htmlspecialchars($cat['nome']) ?>">
                                 <?php endforeach; ?>
                             </datalist>
                         </div>
@@ -439,50 +477,93 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['tipo_lancamento']) && 
         </div>
     </div>
 
+    <!-- MODAL EDITAR ORÇAMENTO - COM SUBCATEGORIAS -->
     <div class="modal fade" id="modalEditarOrcamento" tabindex="-1" aria-labelledby="modalEditarOrcamentoLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
+        <div class="modal-dialog modal-xl">
             <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="modalEditarOrcamentoLabel">Editar Orçamento de <?= date('m/Y') ?></h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <form method="post">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalEditarOrcamentoLabel">Editar Orçamento de <?= date('m/Y') ?></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
                 <div class="modal-body">
-                <input type="hidden" name="tipo_lancamento" value="orcamento">
-                <input type="hidden" name="mes_ano" value="<?= $mesAtual ?>">
-                
-                <div class="table-responsive">
-                    <table class="table table-bordered align-middle">
-                    <thead>
-                        <tr>
-                        <th>Categoria</th>
-                        <th>Planejado (R$)</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($todas_categorias as $cat): ?>
-                        <tr>
-                            <td><?= htmlspecialchars($cat) ?></td>
-                            <td>
-                            <input type="number" step="0.01" class="form-control"
-                                    name="planejado[<?= htmlspecialchars($cat) ?>]"
-                                    value="<?= $planejado[$cat] ?? '' ?>">
-                            </td>
-                        </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                    </table>
+                    <!-- NOVA SEÇÃO: Adicionar Categoria/Subcategoria -->
+                    <div class="card border-success mb-4">
+                        <div class="card-header bg-success text-white">
+                            <h6 class="mb-0">+ Adicionar Nova Categoria/Subcategoria</h6>
+                        </div>
+                        <div class="card-body">
+                            <form method="post" class="row g-3">
+                                <input type="hidden" name="cadastrar_categoria" value="1">
+                                <div class="col-md-4">
+                                    <label class="form-label">Nome da categoria/subcategoria</label>
+                                    <input name="nome_categoria" class="form-control" required placeholder="Ex: Transporte">
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Categoria pai (opcional)</label>
+                                    <select name="categoria_pai" class="form-select">
+                                        <option value="">Categoria principal</option>
+                                        <?php foreach ($categorias_principais as $cat_principal): ?>
+                                            <option value="<?= htmlspecialchars($cat_principal) ?>"><?= htmlspecialchars($cat_principal) ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                    <div class="form-text">Deixe vazio para categoria principal</div>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Limite ideal mensal (R$)</label>
+                                    <input name="limite_ideal" class="form-control" required pattern="\d+([,\.]\d{2})?" title="Número. Ex: 100,00" placeholder="Ex: 200,00">
+                                </div>
+                                <div class="col-md-2 d-flex align-items-end">
+                                    <button type="submit" class="btn btn-success w-100">Adicionar</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- Seção existente: Editar orçamento das categorias -->
+                    <form method="post">
+                        <input type="hidden" name="tipo_lancamento" value="orcamento">
+                        <input type="hidden" name="mes_ano" value="<?= $mesAtual ?>">
+                        
+                        <div class="table-responsive">
+                            <table class="table table-bordered align-middle">
+                                <thead>
+                                    <tr>
+                                        <th>Categoria</th>
+                                        <th>Limite Ideal</th>
+                                        <th>Planejado (R$)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($controle_mensal as $item): ?>
+                                    <tr class="<?= $item['is_subcategoria'] ? 'table-light' : '' ?>">
+                                        <td>
+                                            <?php if ($item['is_subcategoria']): ?>
+                                                <span class="ms-3 text-muted">↳ <?= htmlspecialchars($item['categoria']) ?></span>
+                                            <?php else: ?>
+                                                <strong><?= htmlspecialchars($item['categoria']) ?></strong>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td><span class="text-muted">R$ <?= number_format($item['limite_ideal'], 2, ',', '.') ?></span></td>
+                                        <td>
+                                            <input type="number" step="0.01" class="form-control"
+                                                name="planejado[<?= htmlspecialchars($item['categoria']) ?>]"
+                                                value="<?= $item['planejado'] ?? '' ?>"
+                                                placeholder="0,00">
+                                        </td>
+                                    </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                            <button type="submit" class="btn btn-primary">Salvar Orçamento</button>
+                        </div>
+                    </form>
                 </div>
-                </div>
-                <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <button type="submit" class="btn btn-primary">Salvar</button>
-                </div>
-            </form>
             </div>
         </div>
     </div>
-
 
     <form method="get" class="row g-3 mb-4">
         <div class="col-md-3">
@@ -534,9 +615,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['tipo_lancamento']) && 
         </div>
     </div>
 
+    <!-- ORÇAMENTO COM HIERARQUIA -->
     <div class="card shadow-sm mb-4">
         <div class="card-header d-flex justify-content-between align-items-center">
-            <h5 class="mb-0">Orçamento do Mês (<?= date('m/Y') ?>)</h5>
+            <h5 class="mb-0">Orçamento do Mês (<?= date('m/Y') ?>) - Com Subcategorias</h5>
             <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#modalEditarOrcamento">Editar Orçamento</button>
         </div>
         <div class="card-body p-0">
@@ -545,6 +627,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['tipo_lancamento']) && 
                     <thead class="table-light">
                         <tr>
                             <th>Categoria</th>
+                            <th>Limite Ideal</th>
                             <th>Planejado</th>
                             <th>Real</th>
                             <th>Diferença</th>
@@ -560,9 +643,21 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['tipo_lancamento']) && 
                                     } elseif ($item['diferenca'] > 0) {
                                         $cor_diferenca = 'text-success';
                                     }
+                                    
+                                    $row_class = '';
+                                    if ($item['is_subcategoria']) {
+                                        $row_class = 'table-light';
+                                    }
                                 ?>
-                                <tr>
-                                    <td><?= htmlspecialchars($item['categoria']) ?></td>
+                                <tr class="<?= $row_class ?>">
+                                    <td>
+                                        <?php if ($item['is_subcategoria']): ?>
+                                            <span class="ms-3 text-muted">↳ <?= htmlspecialchars($item['categoria']) ?></span>
+                                        <?php else: ?>
+                                            <strong><?= htmlspecialchars($item['categoria']) ?></strong>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td>R$ <?= number_format($item['limite_ideal'], 2, ',', '.') ?></td>
                                     <td>R$ <?= number_format($item['planejado'], 2, ',', '.') ?></td>
                                     <td>R$ <?= number_format($item['real'], 2, ',', '.') ?></td>
                                     <td class="<?= $cor_diferenca ?>">R$ <?= number_format($item['diferenca'], 2, ',', '.') ?></td>
@@ -570,7 +665,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['tipo_lancamento']) && 
                             <?php endforeach; ?>
                         <?php else: ?>
                             <tr>
-                                <td colspan="4" class="text-center">Nenhum orçamento definido para este mês.</td>
+                                <td colspan="5" class="text-center">Nenhum orçamento definido para este mês.</td>
                             </tr>
                         <?php endif; ?>
                     </tbody>
@@ -578,7 +673,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['tipo_lancamento']) && 
             </div>
         </div>
     </div>
-
 
     <?php if ($faturasPendentes): ?>
     <h2 class="mb-3">Faturas Pendentes (<?= date('m/Y', strtotime($mesAtual)) ?>) </h2>
@@ -836,6 +930,5 @@ new Chart(document.getElementById('graficoBarras'), {
     syncValorFields();
 })();
 </script>
-
 
 <?php include "footer.php"; ?>
