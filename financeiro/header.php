@@ -64,9 +64,9 @@
     <div class="container">
         <div class="navbar-nav">
             <a class="nav-link" href="index.php">Dashboard</a>
-            <a class="nav-link" href="lancamentos.php">Lançamentos</a>
-            <a class="nav-link" href="orcamento.php">Orçamento</a>
-            <a class="nav-link" href="categorias.php">Categorias</a>
+            <a class="nav-link" href="lancamentos.php">Orçamento</a>
+            <a class="nav-link" href="orcamento.php">Editar Orçamento do Mês</a>
+            <a class="nav-link" href="categorias.php">Gerenciar Categorias</a>
             <a class="nav-link" href="cartoes.php">Cartões</a>
         </div>
     </div>
