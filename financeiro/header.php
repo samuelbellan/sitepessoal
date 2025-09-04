@@ -60,4 +60,15 @@
             </div>
         </div>
     </nav>
+    <nav class="navbar navbar-expand-lg navbar-light bg-light">
+    <div class="container">
+        <div class="navbar-nav">
+            <a class="nav-link" href="index.php">Dashboard</a>
+            <a class="nav-link" href="lancamentos.php">Lançamentos</a>
+            <a class="nav-link" href="orcamento.php">Orçamento</a>
+            <a class="nav-link" href="categorias.php">Categorias</a>
+            <a class="nav-link" href="cartoes.php">Cartões</a>
+        </div>
+    </div>
+</nav>
     <main class="container">
