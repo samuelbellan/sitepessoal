@@ -4,7 +4,6 @@ require_once "../conexao.php";
 $title = "Gestão de Categorias";
 include 'header.php';
 
-// Sessão mensagens
 $mensagem = $_SESSION['mensagem'] ?? '';
 $erro = $_SESSION['erro'] ?? '';
 unset($_SESSION['mensagem'], $_SESSION['erro']);
@@ -96,169 +95,203 @@ foreach ($cats as $cat) {
 }
 ?>
 
-<div class="container mt-4">
-    <h1>Gestão de Categorias</h1>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
-    <?php if ($mensagem): ?>
-        <div class="alert alert-success"><?= htmlspecialchars($mensagem) ?></div>
-    <?php endif; ?>
-    <?php if ($erro): ?>
-        <div class="alert alert-danger"><?= htmlspecialchars($erro) ?></div>
-    <?php endif; ?>
-
-    <button class="btn btn-success mb-3" data-bs-toggle="modal" data-bs-target="#modalAdd">+ Nova Categoria</button>
-
-    <table class="table table-striped">
-        <thead>
-            <tr>
-                <th>Categoria <button class="btn btn-sm btn-outline-secondary" onclick="toggleAllSubs()">Expandir</button></th>
-                <th>Valor (R$)</th>
-                <th>Tipo</th>
-                <th>Ações</th>
-            </tr>
-        </thead>
-        <tbody>
-            <?php foreach ($parents as $parent): ?>
-                <?php
-                $total = $parent['limite_ideal'];
-                if (isset($children[$parent['nome']])) {
-                    foreach ($children[$parent['nome']] as $child) {
-                        $total += $child['limite_ideal'];
-                    }
-                }
-                ?>
-                <tr data-parent-id="<?= $parent['id'] ?>">
-                    <td>
-                        <?php if (isset($children[$parent['nome']])): ?>
-                            <button class="btn btn-sm btn-primary" onclick="toggleSubs(<?= $parent['id'] ?>)">+</button>
-                        <?php else: ?>
-                            &nbsp;&nbsp;&nbsp;
-                        <?php endif; ?>
-                        <strong><?= htmlspecialchars($parent['nome']) ?></strong>
-                    </td>
-                    <td><?= number_format($total, 2, ',', '.') ?></td>
-                    <td><?= htmlspecialchars(ucfirst($parent['tipo'])) ?></td>
-                    <td>
-                        <button class="btn btn-warning btn-sm" onclick="editCat(
-                            <?= $parent['id'] ?>,
-                            '<?= addslashes($parent['nome']) ?>',
-                            '<?= $parent['limite_ideal'] ?>',
-                            '<?= htmlspecialchars(addslashes($parent['categoria_pai'] ?? '')) ?>',
-                            '<?= $parent['tipo'] ?>'
-                        )">Editar</button>
-                        <a href="?delete_id=<?= $parent['id'] ?>" onclick="return confirm('Confirma exclusão?')" class="btn btn-danger btn-sm">Excluir</a>
-                    </td>
-                </tr>
-                <?php if (isset($children[$parent['nome']])): ?>
-                    <?php foreach ($children[$parent['nome']] as $child): ?>
-                        <tr class="subrow-<?= $parent['id'] ?>" style="display:none;">
-                            <td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↳ <?= htmlspecialchars($child['nome']) ?></td>
-                            <td><?= number_format($child['limite_ideal'], 2, ',', '.') ?></td>
-                            <td><?= htmlspecialchars(ucfirst($child['tipo'])) ?></td>
-                            <td>
-                                <button class="btn btn-warning btn-sm" onclick="editCat(
-                                    <?= $child['id'] ?>,
-                                    '<?= addslashes($child['nome']) ?>',
-                                    '<?= $child['limite_ideal'] ?>',
-                                    '<?= htmlspecialchars(addslashes($parent['nome'])) ?>',
-                                    '<?= $child['tipo'] ?>'
-                                )">Editar</button>
-                                <a href="?delete_id=<?= $child['id'] ?>" onclick="return confirm('Confirma exclusão?')" class="btn btn-danger btn-sm">Excluir</a>
-                            </td>
-                        </tr>
-                    <?php endforeach; ?>
-                <?php endif; ?>
-            <?php endforeach; ?>
-        </tbody>
-    </table>
-</div>
-
-<!-- Modal Nova Categoria / Subcategoria -->
-<div class="modal fade" id="modalAdd" tabindex="-1" aria-labelledby="modalAddLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <form class="modal-content" method="post" action="">
-            <div class="modal-header">
-                <h5 class="modal-title" id="modalAddLabel">Nova Categoria / Subcategoria</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
-            </div>
-            <div class="modal-body">
-                <input type="hidden" name="cadastrar" value="1" />
-                <div class="mb-3">
-                    <label class="form-label">Nome</label>
-                    <input name="nome" type="text" class="form-control" required/>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Categoria Pai (opcional)</label>
-                    <select name="pai" class="form-select">
-                        <option value="">Nenhuma (categoria principal)</option>
-                        <?php foreach ($parents as $p): ?>
-                            <option><?= htmlspecialchars($p['nome']) ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                    <small class="form-text text-muted">Deixe vazio se for categoria principal</small>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Limite (R$)</label>
-                    <input name="limite_ideal" type="number" step="0.01" class="form-control" required/>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Tipo</label>
-                    <select name="tipo" class="form-select" required>
-                        <option value="despesa" selected>Despesa</option>
-                        <option value="receita">Receita</option>
-                    </select>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="submit" class="btn btn-success">Adicionar</button>
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-            </div>
-        </form>
+<div class="container py-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="mb-0 fw-bold"><i class="fa fa-tags text-info"></i> Gestão de Categorias</h2>
+            <small class="text-muted">Organize todas as categorias e subcategorias do sistema</small>
+        </div>
+        <a href="index.php" class="btn btn-outline-primary"><i class="fa fa-arrow-left"></i> Voltar Dashboard</a>
     </div>
-</div>
 
-<!-- Modal Editar -->
-<div class="modal fade" id="modalEdit" tabindex="-1" aria-labelledby="modalEditLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <form class="modal-content" method="post" action="">
-            <div class="modal-header">
-                <h5 class="modal-title" id="modalEditLabel">Editar Categoria / Subcategoria</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
-            </div>
-            <div class="modal-body">
-                <input type="hidden" name="editar" value="1" />
-                <input type="hidden" name="id" id="editId" />
-                <div class="mb-3">
-                    <label class="form-label">Nome</label>
-                    <input name="nome" id="editNome" type="text" class="form-control" required />
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Categoria Pai (opcional)</label>
-                    <select name="pai" id="editPai" class="form-select">
-                        <option value="">Nenhuma (categoria principal)</option>
-                        <?php foreach ($parents as $p): ?>
-                            <option><?= htmlspecialchars($p['nome']) ?></option>
+    <?php if ($mensagem): ?><div class="alert alert-success"><?= htmlspecialchars($mensagem) ?></div><?php endif; ?>
+    <?php if ($erro): ?><div class="alert alert-danger"><?= htmlspecialchars($erro) ?></div><?php endif; ?>
+
+    <button class="btn btn-success mb-3" data-bs-toggle="modal" data-bs-target="#modalAdd">
+        <i class="fa fa-plus"></i> Nova Categoria
+    </button>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header fw-semibold bg-info-subtle">
+            <i class="fa fa-sitemap text-info"></i> Lista Hierárquica de Categorias
+            <button class="btn btn-sm btn-outline-secondary float-end" onclick="toggleAllSubs()" title="Expandir/Recolher todas">
+                <i class="fa fa-arrows-alt-v"></i>
+            </button>
+        </div>
+        <div class="card-body p-2">
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th width="38%">Categoria / Subcategoria</th>
+                            <th>Limite (R$)</th>
+                            <th>Tipo</th>
+                            <th width="23%">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($parents as $parent): ?>
+                            <?php
+                            $total = $parent['limite_ideal'];
+                            if (isset($children[$parent['nome']])) {
+                                foreach ($children[$parent['nome']] as $child) {
+                                    $total += $child['limite_ideal'];
+                                }
+                            }
+                            ?>
+                            <tr data-parent-id="<?= $parent['id'] ?>">
+                                <td>
+                                    <?php if (isset($children[$parent['nome']])): ?>
+                                        <button class="btn btn-sm btn-outline-info me-2" onclick="toggleSubs(<?= $parent['id'] ?>)" title="Mostrar/ocultar subcategorias">
+                                            <i class="fa fa-angle-down"></i>
+                                        </button>
+                                    <?php else: ?>
+                                        &nbsp;&nbsp;&nbsp;
+                                    <?php endif; ?>
+                                    <span class="fw-bold text-primary"><?= htmlspecialchars($parent['nome']) ?></span>
+                                </td>
+                                <td><?= number_format($total, 2, ',', '.') ?></td>
+                                <td>
+                                    <span class="badge <?= $parent['tipo'] == 'despesa' ? 'bg-danger' : 'bg-success' ?>">
+                                        <i class="fa <?= $parent['tipo'] == 'despesa' ? 'fa-arrow-up' : 'fa-arrow-down' ?>"></i>
+                                        <?= htmlspecialchars(ucfirst($parent['tipo'])) ?>
+                                    </span>
+                                </td>
+                                <td>
+                                    <button class="btn btn-warning btn-sm" onclick="editCat(
+                                        <?= $parent['id'] ?>,
+                                        '<?= addslashes($parent['nome']) ?>',
+                                        '<?= $parent['limite_ideal'] ?>',
+                                        '<?= htmlspecialchars(addslashes($parent['categoria_pai'] ?? '')) ?>',
+                                        '<?= $parent['tipo'] ?>'
+                                    )"><i class="fa fa-edit"></i> Editar</button>
+                                    <a href="?delete_id=<?= $parent['id'] ?>" onclick="return confirm('Confirma exclusão?')" class="btn btn-danger btn-sm"><i class="fa fa-trash"></i> Excluir</a>
+                                </td>
+                            </tr>
+                            <?php if (isset($children[$parent['nome']])): ?>
+                                <?php foreach ($children[$parent['nome']] as $child): ?>
+                                    <tr class="subrow-<?= $parent['id'] ?>" style="display:none;">
+                                        <td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                                            <i class="fa fa-arrow-right text-secondary me-1"></i>
+                                            <?= htmlspecialchars($child['nome']) ?>
+                                        </td>
+                                        <td><?= number_format($child['limite_ideal'], 2, ',', '.') ?></td>
+                                        <td>
+                                            <span class="badge <?= $child['tipo'] == 'despesa' ? 'bg-danger' : 'bg-success' ?>">
+                                                <i class="fa <?= $child['tipo'] == 'despesa' ? 'fa-arrow-up' : 'fa-arrow-down' ?>"></i>
+                                                <?= htmlspecialchars(ucfirst($child['tipo'])) ?>
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <button class="btn btn-warning btn-sm" onclick="editCat(
+                                                <?= $child['id'] ?>,
+                                                '<?= addslashes($child['nome']) ?>',
+                                                '<?= $child['limite_ideal'] ?>',
+                                                '<?= htmlspecialchars(addslashes($parent['nome'])) ?>',
+                                                '<?= $child['tipo'] ?>'
+                                            )"><i class="fa fa-edit"></i> Editar</button>
+                                            <a href="?delete_id=<?= $child['id'] ?>" onclick="return confirm('Confirma exclusão?')" class="btn btn-danger btn-sm"><i class="fa fa-trash"></i> Excluir</a>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
                         <?php endforeach; ?>
-                    </select>
-                    <small class="form-text text-muted">Deixe vazio se for categoria principal</small>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Limite (R$)</label>
-                    <input name="limite_ideal" id="editLimite" type="number" step="0.01" class="form-control" required />
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Tipo</label>
-                    <select name="tipo" id="editTipo" class="form-select" required>
-                        <option value="despesa">Despesa</option>
-                        <option value="receita">Receita</option>
-                    </select>
-                </div>
+                    </tbody>
+                </table>
             </div>
-            <div class="modal-footer">
-                <button type="submit" class="btn btn-warning">Salvar</button>
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-            </div>
-        </form>
+        </div>
+    </div>
+
+    <!-- Modal Nova Categoria / Subcategoria -->
+    <div class="modal fade" id="modalAdd" tabindex="-1" aria-labelledby="modalAddLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <form class="modal-content" method="post" action="">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalAddLabel">Nova Categoria / Subcategoria</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="cadastrar" value="1" />
+                    <div class="mb-3">
+                        <label class="form-label">Nome</label>
+                        <input name="nome" type="text" class="form-control" required/>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Categoria Pai (opcional)</label>
+                        <select name="pai" class="form-select">
+                            <option value="">Nenhuma (categoria principal)</option>
+                            <?php foreach ($parents as $p): ?>
+                                <option><?= htmlspecialchars($p['nome']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <small class="form-text text-muted">Deixe vazio se for categoria principal</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Limite (R$)</label>
+                        <input name="limite_ideal" type="number" step="0.01" class="form-control" required/>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Tipo</label>
+                        <select name="tipo" class="form-select" required>
+                            <option value="despesa" selected>Despesa</option>
+                            <option value="receita">Receita</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-success"><i class="fa fa-plus"></i> Adicionar</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Editar -->
+    <div class="modal fade" id="modalEdit" tabindex="-1" aria-labelledby="modalEditLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <form class="modal-content" method="post" action="">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalEditLabel">Editar Categoria / Subcategoria</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="editar" value="1" />
+                    <input type="hidden" name="id" id="editId" />
+                    <div class="mb-3">
+                        <label class="form-label">Nome</label>
+                        <input name="nome" id="editNome" type="text" class="form-control" required />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Categoria Pai (opcional)</label>
+                        <select name="pai" id="editPai" class="form-select">
+                            <option value="">Nenhuma (categoria principal)</option>
+                            <?php foreach ($parents as $p): ?>
+                                <option><?= htmlspecialchars($p['nome']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <small class="form-text text-muted">Deixe vazio se for categoria principal</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Limite (R$)</label>
+                        <input name="limite_ideal" id="editLimite" type="number" step="0.01" class="form-control" required />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Tipo</label>
+                        <select name="tipo" id="editTipo" class="form-select" required>
+                            <option value="despesa">Despesa</option>
+                            <option value="receita">Receita</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-warning"><i class="fa fa-save"></i> Salvar</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                </div>
+            </form>
+        </div>
     </div>
 </div>
 
@@ -271,14 +304,12 @@ function editCat(id, nome, limite, pai, tipo) {
     document.getElementById('editTipo').value = tipo || 'despesa';
     new bootstrap.Modal(document.getElementById('modalEdit')).show();
 }
-
 function toggleSubs(id) {
     const rows = document.querySelectorAll('tr.subrow-' + id);
     rows.forEach(row => {
         row.style.display = (row.style.display === 'none' || row.style.display === '') ? 'table-row' : 'none';
     });
 }
-
 function toggleAllSubs() {
     const rows = document.querySelectorAll('tr[class^="subrow-"]');
     const anyHidden = Array.from(rows).some(row => row.style.display === 'none' || row.style.display === '');
@@ -287,5 +318,5 @@ function toggleAllSubs() {
     });
 }
 </script>
-
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <?php include 'footer.php'; ?>

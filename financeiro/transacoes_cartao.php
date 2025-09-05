@@ -35,8 +35,7 @@ for ($i = -12; $i <= 12; $i++) {
 }
 sort($meses);
 
-// --- CÁLCULO DE USO DO LIMITE ---
-// Somar o valor de todas as parcelas pendentes (paga=0)
+// Cálculo de uso do limite
 $stmt_uso_limite = $pdo->prepare("
     SELECT SUM(p.valor) AS total_pendente
     FROM parcelas_cartao p
@@ -47,7 +46,7 @@ $stmt_uso_limite->execute([$cartao_id]);
 $total_pendente = $stmt_uso_limite->fetchColumn() ?: 0;
 $limite_disponivel = $cartao['limite'] - $total_pendente;
 
-// --- BUSCAR PARCELAS DO MÊS FILTRADO ---
+// Buscar parcelas do mês filtrado
 $stmt_parcelas = $pdo->prepare("
     SELECT p.*, t.descricao, t.valor AS valor_total_transacao, t.parcelas as total_parcelas
     FROM parcelas_cartao p
@@ -60,105 +59,120 @@ $parcelas_mes = $stmt_parcelas->fetchAll(PDO::FETCH_ASSOC);
 $soma_parcelas = array_sum(array_column($parcelas_mes, 'valor'));
 ?>
 
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <h1>Extrato do Cartão: <?= htmlspecialchars($cartao['nome']) ?></h1>
-    <div>
-        <a href="adicionar_transacao.php?cartao_id=<?= $cartao_id ?>" class="btn btn-success">+ Adicionar Transação</a>
-        <button onclick="exportToCSV()" class="btn btn-primary">Exportar CSV</button>
-        <button onclick="exportToExcel()" class="btn btn-primary">Exportar Excel</button>
-        <button onclick="exportToPDF()" class="btn btn-primary">Exportar PDF</button>
-    </div>
-</div>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
-<form method="get" class="mb-4">
-    <div class="row g-3">
-        <div class="col-md-4">
-            <label class="form-label">Mês</label>
-            <select name="mes" class="form-select">
-                <?php foreach ($meses as $m): ?>
-                    <option value="<?= $m ?>" <?= $filtro_mes == $m ? 'selected' : '' ?>><?= date('m/Y', strtotime($m . '-01')) ?></option>
-                <?php endforeach; ?>
-            </select>
+<div class="container py-4">
+    <!-- Top e filtros -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="mb-0 fw-bold"><i class="fa fa-credit-card text-warning"></i> Extrato do Cartão: <?= htmlspecialchars($cartao['nome']) ?></h2>
+            <small class="text-muted">Veja as transações, parcelas e limite de crédito</small>
         </div>
-        <div class="col-md-2 d-flex align-items-end">
-            <button type="submit" class="btn btn-primary">Filtrar</button>
+        <div class="d-flex flex-wrap gap-2">
+            <a href="adicionar_transacao.php?cartao_id=<?= $cartao_id ?>" class="btn btn-success"><i class="fa fa-plus"></i> Nova Transação</a>
+            <button onclick="exportToCSV()" class="btn btn-primary"><i class="fa fa-file-csv"></i> Exportar CSV</button>
+            <button onclick="exportToExcel()" class="btn btn-success"><i class="fa fa-file-excel"></i> Exportar Excel</button>
+            <button onclick="exportToPDF()" class="btn btn-danger"><i class="fa fa-file-pdf"></i> Exportar PDF</button>
+            <a href="cartoes.php" class="btn btn-outline-primary"><i class="fa fa-arrow-left"></i> Voltar Cartões</a>
         </div>
     </div>
-    <input type="hidden" name="cartao_id" value="<?= $cartao_id ?>">
-</form>
 
-<div class="row mb-4">
-    <div class="col-md-6">
-        <div class="card shadow-sm text-bg-primary">
-            <div class="card-body">
-                <h5>Limite Total</h5>
-                <p class="fs-4">R$ <?= number_format($cartao['limite'], 2, ',', '.') ?></p>
+    <form method="get" class="mb-4">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label">Mês</label>
+                <select name="mes" class="form-select">
+                    <?php foreach ($meses as $m): ?>
+                        <option value="<?= $m ?>" <?= $filtro_mes == $m ? 'selected' : '' ?>><?= date('m/Y', strtotime($m . '-01')) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <button type="submit" class="btn btn-primary w-100"><i class="fa fa-search"></i> Filtrar</button>
+            </div>
+        </div>
+        <input type="hidden" name="cartao_id" value="<?= $cartao_id ?>">
+    </form>
+
+    <div class="row mb-4 g-3">
+        <div class="col-md-6">
+            <div class="card shadow h-100 bg-gradient bg-primary-subtle border-0">
+                <div class="card-body text-center">
+                    <i class="fa fa-university fa-2x text-primary"></i>
+                    <div class="fw-semibold mt-2">Limite Total</div>
+                    <div class="fs-4 fw-bold">R$ <?= number_format($cartao['limite'], 2, ',', '.') ?></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card shadow h-100 bg-gradient bg-warning-subtle border-0">
+                <div class="card-body text-center">
+                    <i class="fa fa-money-bill-wave fa-2x text-warning"></i>
+                    <div class="fw-semibold mt-2">Limite Disponível</div>
+                    <div class="fs-4 fw-bold">R$ <?= number_format($limite_disponivel, 2, ',', '.') ?></div>
+                </div>
             </div>
         </div>
     </div>
-    <div class="col-md-6">
-        <div class="card shadow-sm text-bg-warning">
-            <div class="card-body">
-                <h5>Limite Disponível</h5>
-                <p class="fs-4">R$ <?= number_format($limite_disponivel, 2, ',', '.') ?></p>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-info-subtle fw-semibold">
+            <i class="fa fa-list text-info"></i> Parcela(s) do Mês <?= date("m/Y", strtotime($filtro_mes.'-01')) ?>
+        </div>
+        <div class="card-body p-2">
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered align-middle mb-0" id="extratoTable">
+                    <thead class="table-light">
+                        <tr>
+                            <th>ID Parcela</th>
+                            <th>Descrição</th>
+                            <th>Valor Parcela</th>
+                            <th>Parcela</th>
+                            <th>Valor Total</th>
+                            <th>Vencimento</th>
+                            <th>Status</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if ($parcelas_mes): ?>
+                            <?php foreach ($parcelas_mes as $p): ?>
+                                <?php 
+                                    $status_cor = $p['paga'] ? 'table-success' : 'table-danger';
+                                    $status_texto = $p['paga'] ? "<span class='badge bg-success'>Paga</span>" : "<span class='badge bg-danger'>Pendente</span>";
+                                ?>
+                                <tr class="<?= $status_cor ?>">
+                                    <td><?= $p['id'] ?></td>
+                                    <td><?= htmlspecialchars($p['descricao']) ?></td>
+                                    <td>R$ <?= number_format($p['valor'], 2, ',', '.') ?></td>
+                                    <td><?= $p['numero_parcela'] ?> de <?= $p['total_parcelas'] ?></td>
+                                    <td>R$ <?= number_format($p['valor_total_transacao'], 2, ',', '.') ?></td>
+                                    <td><?= date("d/m/Y", strtotime($p['vencimento'])) ?></td>
+                                    <td><?= $status_texto ?></td>
+                                    <td>
+                                        <a href="editar_parcela.php?id=<?= $p['id'] ?>&cartao_id=<?= $cartao_id ?>" class="btn btn-sm btn-warning"><i class="fa fa-edit"></i> Editar</a>
+                                        <a href="remover_parcela.php?id=<?= $p['id'] ?>&cartao_id=<?= $cartao_id ?>&mes=<?= $filtro_mes ?>" class="btn btn-sm btn-danger" onclick="return confirm('Tem certeza que deseja remover esta parcela?')"><i class="fa fa-trash"></i> Remover</a>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        <?php else: ?>
+                            <tr><td colspan="8" class="text-center">Nenhuma parcela encontrada para este mês.</td></tr>
+                        <?php endif; ?>
+                    </tbody>
+                    <?php if ($parcelas_mes): ?>
+                    <tfoot><!-- Totalizador do mês -->
+                        <tr class="table-secondary fw-bold">
+                            <td colspan="2" class="text-end">Somatório do Mês:</td>
+                            <td class="text-start">R$ <?= number_format($soma_parcelas, 2, ',', '.') ?></td>
+                            <td colspan="5"></td>
+                        </tr>
+                    </tfoot>
+                    <?php endif; ?>
+                </table>
             </div>
         </div>
     </div>
 </div>
-
-<div class="table-responsive">
-    <table class="table table-striped table-bordered align-middle" id="extratoTable">
-        <thead class="table-dark">
-            <tr>
-                <th>ID Parcela</th>
-                <th>Descrição</th>
-                <th>Valor Parcela</th>
-                <th>Parcela</th>
-                <th>Valor Total</th>
-                <th>Vencimento</th>
-                <th>Status</th>
-                <th>Ações</th>
-            </tr>
-        </thead>
-        <tbody>
-            <?php if ($parcelas_mes): ?>
-                <?php foreach ($parcelas_mes as $p): ?>
-                    <?php 
-                        $status_cor = $p['paga'] ? 'table-success' : 'table-danger';
-                        $status_texto = $p['paga'] ? "<span class='badge bg-success'>Paga</span>" : "<span class='badge bg-danger'>Pendente</span>";
-                    ?>
-                    <tr class="<?= $status_cor ?>">
-                        <td><?= $p['id'] ?></td>
-                        <td><?= htmlspecialchars($p['descricao']) ?></td>
-                        <td>R$ <?= number_format($p['valor'], 2, ',', '.') ?></td>
-                        <td><?= $p['numero_parcela'] ?> de <?= $p['total_parcelas'] ?></td>
-                        <td>R$ <?= number_format($p['valor_total_transacao'], 2, ',', '.') ?></td>
-                        <td><?= date("d/m/Y", strtotime($p['vencimento'])) ?></td>
-                        <td><?= $status_texto ?></td>
-                        <td>
-                            <a href="editar_parcela.php?id=<?= $p['id'] ?>&cartao_id=<?= $cartao_id ?>" class="btn btn-sm btn-warning">Editar</a>
-                            <a href="remover_parcela.php?id=<?= $p['id'] ?>" class="btn btn-sm btn-danger" onclick="return confirm('Tem certeza que deseja remover esta parcela?')">Remover</a>
-                        </td>
-                    </tr>
-                <?php endforeach; ?>
-            <?php else: ?>
-                <tr><td colspan="8" class="text-center">Nenhuma parcela encontrada para este mês.</td></tr>
-            <?php endif; ?>
-        </tbody>
-    </table>
-</div>
-
-<div class="table-responsive">
-    <table class="table table-bordered">
-        <tr class="table-secondary">
-            <td colspan="2" class="text-end">Somatório do Mês:</td>
-            <td class="text-start">R$ <?= number_format($soma_parcelas, 2, ',', '.') ?></td>
-            <td colspan="5"></td>
-        </tr>
-    </table>
-</div>
-
-<a href="cartoes.php" class="btn btn-secondary mt-3">Voltar para Cartões</a>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js"></script>
@@ -198,54 +212,11 @@ function exportToCSV() {
 }
 
 function exportToExcel() {
-    try {
-        if (typeof XLSX === 'undefined') {
-            throw new Error('Biblioteca XLSX não foi carregada. Verifique o CDN ou inclua a biblioteca localmente.');
-        }
-
-        const table = document.getElementById('extratoTable');
-        const rows = table.querySelectorAll('tbody tr');
-        const data = [];
-        const headers = ['ID Parcela', 'Descrição', 'Valor Parcela', 'Parcela', 'Valor Total', 'Vencimento', 'Status'];
-        data.push(headers);
-        rows.forEach((row, index) => {
-            const cells = row.querySelectorAll('td');
-            if (cells.length >= 7) {
-                const valorParcelaText = cells[2].innerText.replace('R$ ', '').replace(',', '.').trim();
-                const totalText = cells[4].innerText.replace('R$ ', '').replace(',', '.').trim();
-                const valorParcela = parseFloat(valorParcelaText);
-                const total = parseFloat(totalText);
-                const rowData = [
-                    cells[0].innerText || '',
-                    cells[1].innerText || '',
-                    isNaN(valorParcela) ? cells[2].innerText : valorParcela,
-                    cells[3].innerText || '',
-                    isNaN(total) ? cells[4].innerText : total,
-                    cells[5].innerText || '',
-                    cells[6].innerText || ''
-                ];
-                if (rowData.length !== headers.length) {
-                    throw new Error(`Linha ${index + 1} tem ${rowData.length} colunas, esperado ${headers.length}.`);
-                }
-                data.push(rowData);
-            }
-        });
-        
-        console.log('Dados para exportação Excel:', data);
-        if (!data || data.length === 0) {
-            throw new Error('Nenhum dado disponível para exportação.');
-        }
-        
-        const ws = XLSX.utils.aoa_to_sheet(data);
-        console.log('Worksheet criada:', ws);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'Extrato');
-        console.log('Workbook criado:', wb);
-        XLSX.writeFile(wb, `extrato_<?= htmlspecialchars($cartao['nome']) ?>_<?= $filtro_mes ?>.xlsx`);
-    } catch (error) {
-        console.error('Erro ao exportar para Excel:', error.message, error.stack);
-        alert('Ocorreu um erro ao exportar para Excel: ' + error.message + '. Verifique o console para mais detalhes.');
-    }
+    const table = document.getElementById('extratoTable');
+    const ws = XLSX.utils.table_to_sheet(table);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Extrato");
+    XLSX.writeFile(wb, `extrato_<?= htmlspecialchars($cartao['nome']) ?>_<?= $filtro_mes ?>.xlsx`);
 }
 
 function exportToPDF() {
@@ -267,5 +238,4 @@ function exportToPDF() {
     }
 }
 </script>
-
 <?php include "footer.php"; ?>

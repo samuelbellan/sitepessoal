@@ -29,83 +29,91 @@ $faturasPendentes = $stmtFaturas->fetchAll(PDO::FETCH_ASSOC);
 include 'header.php';
 ?>
 
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <h1>Gerenciar Cartões de Crédito</h1>
-    <div>
-        <a href="adicionar_cartao.php" class="btn btn-success">+ Adicionar Cartão</a>
-        <a href="faturas_todos.php" class="btn btn-info ms-2">Ver Faturas de Todos</a>
-        <a href="index.php" class="btn btn-secondary ms-2">Voltar ao Controle Financeiro</a>
-    </div>
-</div>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
-<div class="table-responsive mb-5">
-    <table class="table table-striped table-bordered align-middle">
-        <thead class="table-dark">
-            <tr>
-                <th>ID</th>
-                <th>Nome</th>
-                <th>Limite</th>
-                <th>Dia Fechamento</th>
-                <th>Dia Vencimento</th>
-                <th>Ações</th>
-            </tr>
-        </thead>
-        <tbody>
+<div class="container py-4">
+
+    <!-- Topbar e ações -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="mb-0 fw-bold"><i class="fa fa-credit-card text-warning"></i> Gerenciar Cartões de Crédito</h2>
+            <small class="text-muted">Controle todos os seus cartões e visualize faturas</small>
+        </div>
+        <div>
+            <a href="adicionar_cartao.php" class="btn btn-success"><i class="fa fa-plus"></i> Novo Cartão</a>
+            <a href="faturas_todos.php" class="btn btn-info ms-2"><i class="fa fa-file-invoice-dollar"></i> Faturas de Todos</a>
+            <a href="index.php" class="btn btn-outline-primary ms-2"><i class="fa fa-arrow-left"></i> Voltar Dashboard</a>
+        </div>
+    </div>
+
+    <div class="row row-cols-1 row-cols-md-2 g-4 mb-3">
         <?php if ($cartoes): ?>
             <?php foreach ($cartoes as $c): ?>
-                <tr>
-                    <td><?= $c['id'] ?></td>
-                    <td><?= htmlspecialchars($c['nome']) ?></td>
-                    <td>R$ <?= number_format($c['limite'], 2, ',', '.') ?></td>
-                    <td><?= $c['dia_fechamento'] ?></td>
-                    <td><?= $c['dia_vencimento'] ?></td>
-                    <td>
-                        <a href="transacoes_cartao.php?cartao_id=<?= $c['id'] ?>" class="btn btn-sm btn-info">Transações</a>
-                        <a href="editar_cartao.php?id=<?= $c['id'] ?>" class="btn btn-sm btn-warning">Editar</a>
-                        <a href="remover_cartao.php?id=<?= $c['id'] ?>" class="btn btn-sm btn-danger" onclick="return confirm('Confirma remoção? Todas as transações serão excluídas.')">Remover</a>
-                    </td>
-                </tr>
+                <div class="col">
+                    <div class="card shadow-sm h-100">
+                        <div class="card-body">
+                            <h5 class="card-title mb-1">
+                                <i class="fa fa-credit-card text-warning"></i>
+                                <?= htmlspecialchars($c['nome']) ?>
+                            </h5>
+                            <div class="mb-1 text-secondary small">Limite: <b>R$ <?= number_format($c['limite'], 2, ',', '.') ?></b></div>
+                            <div class="mb-1 text-secondary small">Fechamento: <b><?= $c['dia_fechamento'] ?></b> &nbsp; &bull; &nbsp; Vencimento: <b><?= $c['dia_vencimento'] ?></b></div>
+                        </div>
+                        <div class="card-footer d-flex gap-2">
+                            <a href="transacoes_cartao.php?cartao_id=<?= $c['id'] ?>" class="btn btn-sm btn-info"><i class="fa fa-list"></i> Transações</a>
+                            <a href="editar_cartao.php?id=<?= $c['id'] ?>" class="btn btn-sm btn-warning"><i class="fa fa-edit"></i> Editar</a>
+                            <a href="remover_cartao.php?id=<?= $c['id'] ?>" class="btn btn-sm btn-danger" onclick="return confirm('Confirma remoção? Todas as transações serão excluídas.')"><i class="fa fa-trash"></i> Remover</a>
+                        </div>
+                    </div>
+                </div>
             <?php endforeach; ?>
         <?php else: ?>
-            <tr><td colspan="6" class="text-center">Nenhum cartão cadastrado.</td></tr>
+            <div class="col-12"><div class="alert alert-info text-center mb-0">Nenhum cartão cadastrado.</div></div>
         <?php endif; ?>
-        </tbody>
-    </table>
-</div>
-
-<h2>Faturas Pendentes do Mês (<?= date('m/Y') ?>)</h2>
-
-<?php if (count($faturasPendentes)): ?>
-    <div class="table-responsive">
-        <table class="table table-striped table-bordered">
-            <thead>
-            <tr>
-                <th>Cartão</th>
-                <th>Valor Total</th>
-                <th>Vencimento</th>
-                <th>Ações</th>
-            </tr>
-            </thead>
-            <tbody>
-            <?php foreach ($faturasPendentes as $fatura): ?>
-                <tr>
-                    <td><?= htmlspecialchars($fatura['cartao_nome']) ?></td>
-                    <td>R$ <?= number_format($fatura['total_fatura'], 2, ',', '.') ?></td>
-                    <td><?= date('d/m/Y', strtotime($fatura['vencimento'])) ?></td>
-                    <td>
-                        <form method="post" action="pagar_fatura.php" onsubmit="return confirm('Confirma o pagamento da fatura de <?= htmlspecialchars($fatura['cartao_nome']) ?>?');" style="display:inline">
-                            <input type="hidden" name="cartao_id" value="<?= $fatura['cartao_id'] ?>">
-                            <input type="hidden" name="mes" value="<?= date('Y-m') ?>">
-                            <button type="submit" class="btn btn-sm btn-success">Pagar Fatura</button>
-                        </form>
-                    </td>
-                </tr>
-            <?php endforeach; ?>
-            </tbody>
-        </table>
     </div>
-<?php else: ?>
-    <p>Não há faturas pendentes no mês atual.</p>
-<?php endif; ?>
 
+    <div class="card shadow mb-4">
+        <div class="card-header bg-warning-subtle text-dark fw-semibold">
+            <i class="fa fa-exclamation-circle text-warning"></i> Faturas Pendentes do Mês (<?= date('m/Y') ?>)
+        </div>
+        <div class="card-body p-2">
+            <?php if (count($faturasPendentes)): ?>
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Cartão</th>
+                            <th>Valor Total</th>
+                            <th>Vencimento</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    <?php foreach ($faturasPendentes as $fatura): ?>
+                        <tr>
+                            <td>
+                                <i class="fa fa-credit-card text-warning"></i>
+                                <?= htmlspecialchars($fatura['cartao_nome']) ?>
+                            </td>
+                            <td>R$ <?= number_format($fatura['total_fatura'], 2, ',', '.') ?></td>
+                            <td><?= date('d/m/Y', strtotime($fatura['vencimento'])) ?></td>
+                            <td>
+                                <form method="post" action="pagar_fatura.php" onsubmit="return confirm('Confirma o pagamento da fatura de <?= htmlspecialchars($fatura['cartao_nome']) ?>?');" style="display:inline">
+                                    <input type="hidden" name="cartao_id" value="<?= $fatura['cartao_id'] ?>">
+                                    <input type="hidden" name="mes" value="<?= date('Y-m') ?>">
+                                    <button type="submit" class="btn btn-sm btn-success"><i class="fa fa-check"></i> Pagar Fatura</button>
+                                </form>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+            <?php else: ?>
+                <div class="alert alert-success text-center mb-0">Não há faturas pendentes no mês atual.</div>
+            <?php endif; ?>
+        </div>
+    </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <?php include 'footer.php'; ?>
